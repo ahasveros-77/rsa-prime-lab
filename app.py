@@ -2,8 +2,7 @@ import json
 from math import gcd
 import streamlit as st
 from src.rsa_math import (
-    is_prime, valid_e_values, generate_key_data, text_to_blocks,
-    blocks_to_text, encrypt_blocks, decrypt_blocks, max_chunk_bytes,
+    is_prime, valid_e_values, generate_key_data, text_to_decimal_blocks, decimal_blocks_to_text, encrypt_blocks, decrypt_blocks,
 )
 
 st.set_page_config(page_title="RSA PRIME LAB", page_icon="🔐", layout="wide", initial_sidebar_state="expanded")
@@ -23,7 +22,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-DEFAULTS={"key":None,"cipher":[],"plain_blocks":[],"chunk_lengths":[],"restored":"","number_cipher":None,"number_plain":None}
+DEFAULTS={"key":None,"cipher":[],"plain_blocks":[],"block_lengths":[],"display_blocks":[],"ascii_codes":[],"digit_string":"","restored":"","number_cipher":None,"number_plain":None}
 for k,v in DEFAULTS.items(): st.session_state.setdefault(k,v)
 
 def reset_results():
@@ -104,24 +103,30 @@ if not key:
 else:
     tab_text,tab_number=st.tabs(["TEKS UTF-8","SATU BLOK ANGKA"])
     with tab_text:
-        capacity=max_chunk_bytes(key["n"])
-        st.markdown(f'<div class="nb-card yellow"><b>KAPASITAS BLOK:</b> {capacity} byte per blok karena setiap blok harus lebih kecil dari n = {key["n"]}.</div>',unsafe_allow_html=True)
-        text=st.text_area("Pesan",value="HARI INI",height=110,help="Pesan diubah ke byte UTF-8, kemudian dipecah menjadi blok yang lebih kecil dari n.")
-        if capacity<1:
-            st.error("n terlalu kecil untuk mode teks. Gunakan p dan q yang lebih besar, misalnya 47 dan 71.")
-        elif st.button("ENKRIPSI TEKS",type="primary",use_container_width=True):
+        st.markdown('<div class="nb-card yellow"><b>METODE PPT:</b> karakter → ASCII desimal 2 digit → gabungkan → blok 3 digit → enkripsi.</div>',unsafe_allow_html=True)
+        text=st.text_area("Pesan",value="HARI INI",height=110,help="Sesuai PPT: karakter harus memiliki kode ASCII 2 digit 32-99.")
+        st.caption("Didukung: spasi, tanda baca tertentu, angka, A-Z, dan a-c (ASCII 32-99).")
+        if key["n"]<=999: st.warning(f"n={key['n']} mungkin terlalu kecil untuk blok 3 digit. Contoh PPT memakai n=3337.")
+        if st.button("UBAH KE ASCII & ENKRIPSI",type="primary",use_container_width=True):
             try:
-                blocks,lengths,size=text_to_blocks(text,key["n"])
-                st.session_state.plain_blocks=blocks;st.session_state.chunk_lengths=lengths
-                st.session_state.cipher=encrypt_blocks(blocks,key["e"],key["n"]);st.session_state.restored=""
+                x=text_to_decimal_blocks(text,key["n"],3)
+                st.session_state.plain_blocks=x["values"];st.session_state.block_lengths=x["lengths"]
+                st.session_state.display_blocks=x["display_blocks"];st.session_state.ascii_codes=x["ascii_codes"]
+                st.session_state.digit_string=x["digit_string"];st.session_state.cipher=encrypt_blocks(x["values"],key["e"],key["n"]);st.session_state.restored=""
                 st.rerun()
             except ValueError as exc: st.error(str(exc))
         if st.session_state.cipher:
-            rows=[{"Blok":i+1,"Plain m":m,"Rumus":f"{m}^{key['e']} mod {key['n']}","Cipher c":cipher} for i,(m,cipher) in enumerate(zip(st.session_state.plain_blocks,st.session_state.cipher))]
+            st.markdown("#### 1. Karakter → ASCII")
+            st.dataframe([{"Karakter":"spasi" if ch==" " else ch,"ASCII":code} for ch,code in zip(text,st.session_state.ascii_codes)],use_container_width=True,hide_index=True)
+            st.markdown("#### 2. Digit digabung")
+            st.code(st.session_state.digit_string,language=None)
+            st.markdown("#### 3. Blok 3 digit")
+            st.code(" | ".join(st.session_state.display_blocks),language=None)
+            rows=[{"Blok":i+1,"pᵢ":shown,"Rumus":f"{m}^{key['e']} mod {key['n']}","cᵢ":c} for i,(shown,m,c) in enumerate(zip(st.session_state.display_blocks,st.session_state.plain_blocks,st.session_state.cipher))]
             st.dataframe(rows,use_container_width=True,hide_index=True)
-            st.markdown('<div class="formula">c = m<sup>e</sup> mod n</div>',unsafe_allow_html=True)
+            st.markdown('<div class="formula">cᵢ = pᵢ<sup>e</sup> mod n</div>',unsafe_allow_html=True)
             st.code(" ".join(map(str,st.session_state.cipher)),language=None)
-            st.download_button("UNDUH CIPHERTEXT JSON",json.dumps({"cipher":st.session_state.cipher,"lengths":st.session_state.chunk_lengths,"public_key":[key["e"],key["n"]]},indent=2),"rsa_ciphertext.json","application/json",use_container_width=True)
+            st.download_button("UNDUH CIPHERTEXT JSON",json.dumps({"method":"PPT ASCII 2 digit + blok 3 digit","ascii_codes":st.session_state.ascii_codes,"digits":st.session_state.digit_string,"plain_blocks":st.session_state.display_blocks,"cipher":st.session_state.cipher,"block_lengths":st.session_state.block_lengths,"public_key":[key["e"],key["n"]]},indent=2),"rsa_ciphertext.json","application/json",use_container_width=True)
     with tab_number:
         m=st.number_input("Plainteks angka m",min_value=0,max_value=key["n"]-1,value=min(9,key["n"]-1),step=1)
         st.caption(f"Syarat wajib: 0 ≤ m < n, jadi 0 ≤ m < {key['n']}.")
@@ -135,7 +140,7 @@ if key and st.session_state.cipher:
     if st.button("DEKRIPSI TEKS DENGAN KUNCI PRIVAT",type="primary",use_container_width=True):
         try:
             recovered=decrypt_blocks(st.session_state.cipher,key["d"],key["n"])
-            st.session_state.restored=blocks_to_text(recovered,st.session_state.chunk_lengths)
+            st.session_state.restored, st.session_state.recovered_blocks, st.session_state.recovered_codes = decimal_blocks_to_text(recovered,st.session_state.block_lengths)
             st.rerun()
         except (ValueError,UnicodeDecodeError) as exc: st.error(f"Dekripsi gagal: {exc}")
     if st.session_state.restored:
@@ -153,6 +158,6 @@ if key and st.session_state.number_cipher is not None:
         st.markdown(f'<div class="nb-card cyan"><div class="big-value">m = {st.session_state.number_plain}</div><div class="mini">{st.session_state.number_cipher}<sup>{key["d"]}</sup> mod {key["n"]}</div></div>',unsafe_allow_html=True)
 
 with st.expander("Mengapa demo ini tidak aman untuk data nyata?"):
-    st.write("Aplikasi ini sengaja memakai textbook RSA tanpa OAEP agar rumus kuliah terlihat langsung. Bilangan prima kecil mudah diuji dan n mudah difaktorkan. Sistem nyata memakai kunci besar, padding standar seperti OAEP, dan biasanya mengenkripsi kunci simetris, bukan pesan panjang langsung.")
+    st.write("Aplikasi ini mengikuti metode PPT: ASCII desimal 2 digit, blok 3 digit, dan textbook RSA tanpa OAEP agar rumus kuliah terlihat langsung. Bilangan prima kecil mudah diuji dan n mudah difaktorkan. Sistem nyata memakai kunci besar, padding standar seperti OAEP, dan biasanya mengenkripsi kunci simetris, bukan pesan panjang langsung.")
 
 st.markdown('''<div class="footer-card"><b>RINGKASAN</b><br>1) p,q prima → 2) n=pq dan φ=(p−1)(q−1) → 3) pilih e dengan PBB(e,φ)=1 → 4) d=e⁻¹ mod φ → 5) c=mᵉ mod n → 6) m=cᵈ mod n.</div>''',unsafe_allow_html=True)

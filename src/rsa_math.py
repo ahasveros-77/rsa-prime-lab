@@ -63,34 +63,31 @@ def generate_key_data(p: int, q: int, e: int):
     return {"p": p, "q": q, "n": n, "phi": phi, "e": e, "d": d, "euclid_steps": euclid_steps}
 
 
-def max_chunk_bytes(n: int) -> int:
-    if n <= 1:
-        return 0
-    return max(0, (n.bit_length() - 1) // 8)
+def text_to_decimal_blocks(text, n, block_size=3):
+    if not text: raise ValueError("Pesan tidak boleh kosong.")
+    bad=[(ch,ord(ch)) for ch in text if not 32 <= ord(ch) <= 99]
+    if bad: raise ValueError("Metode PPT hanya menerima ASCII 2 digit (32-99). Karakter tidak valid: "+", ".join(f"{ch!r}={code}" for ch,code in bad[:4]))
+    codes=[str(ord(ch)) for ch in text]
+    digits="".join(codes)
+    raw=[digits[i:i+block_size] for i in range(0,len(digits),block_size)]
+    values=[int(x) for x in raw]
+    invalid=[(i+1,x,v) for i,(x,v) in enumerate(zip(raw,values)) if v>=n]
+    if invalid:
+        i,x,v=invalid[0]; raise ValueError(f"Blok ke-{i} ({x}={v}) harus lebih kecil dari n={n}. Pilih p dan q lebih besar.")
+    return {"ascii_codes":codes,"digit_string":digits,"raw_blocks":raw,"display_blocks":[x.zfill(block_size) for x in raw],"values":values,"lengths":[len(x) for x in raw]}
 
+def decimal_blocks_to_text(values, lengths):
+    raw=[str(v).zfill(l) for v,l in zip(values,lengths)]
+    digits="".join(raw)
+    if len(digits)%2: raise ValueError("Jumlah digit hasil dekripsi tidak genap.")
+    codes=[digits[i:i+2] for i in range(0,len(digits),2)]
+    if any(not 32<=int(x)<=99 for x in codes): raise ValueError("Kode ASCII hasil dekripsi di luar 32-99.")
+    return "".join(chr(int(x)) for x in codes),raw,codes
 
-def text_to_blocks(text: str, n: int):
-    size = max_chunk_bytes(n)
-    if size < 1:
-        raise ValueError("n terlalu kecil untuk teks UTF-8. Pilih p dan q yang lebih besar atau gunakan mode angka.")
-    raw = text.encode("utf-8")
-    chunks = [raw[i:i + size] for i in range(0, len(raw), size)]
-    blocks = [int.from_bytes(chunk, "big") for chunk in chunks]
-    return blocks, [len(chunk) for chunk in chunks], size
+def encrypt_blocks(blocks,e,n):
+    if any(v<0 or v>=n for v in blocks): raise ValueError("Setiap blok harus memenuhi 0 <= blok < n.")
+    return [pow(v,e,n) for v in blocks]
 
-
-def blocks_to_text(blocks, lengths):
-    raw = b"".join(value.to_bytes(length, "big") for value, length in zip(blocks, lengths))
-    return raw.decode("utf-8")
-
-
-def encrypt_blocks(blocks, e: int, n: int):
-    if any(value < 0 or value >= n for value in blocks):
-        raise ValueError("Setiap blok plainteks harus memenuhi 0 <= blok < n.")
-    return [pow(value, e, n) for value in blocks]
-
-
-def decrypt_blocks(cipher_blocks, d: int, n: int):
-    if any(value < 0 or value >= n for value in cipher_blocks):
-        raise ValueError("Setiap blok cipherteks harus memenuhi 0 <= blok < n.")
-    return [pow(value, d, n) for value in cipher_blocks]
+def decrypt_blocks(blocks,d,n):
+    if any(v<0 or v>=n for v in blocks): raise ValueError("Setiap cipher harus memenuhi 0 <= cipher < n.")
+    return [pow(v,d,n) for v in blocks]
