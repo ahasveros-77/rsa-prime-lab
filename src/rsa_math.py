@@ -64,25 +64,60 @@ def generate_key_data(p: int, q: int, e: int):
 
 
 def text_to_decimal_blocks(text, n, block_size=3):
-    if not text: raise ValueError("Pesan tidak boleh kosong.")
-    bad=[(ch,ord(ch)) for ch in text if not 32 <= ord(ch) <= 99]
-    if bad: raise ValueError("Metode PPT hanya menerima ASCII 2 digit (32-99). Karakter tidak valid: "+", ".join(f"{ch!r}={code}" for ch,code in bad[:4]))
-    codes=[str(ord(ch)) for ch in text]
-    digits="".join(codes)
-    raw=[digits[i:i+block_size] for i in range(0,len(digits),block_size)]
-    values=[int(x) for x in raw]
-    invalid=[(i+1,x,v) for i,(x,v) in enumerate(zip(raw,values)) if v>=n]
-    if invalid:
-        i,x,v=invalid[0]; raise ValueError(f"Blok ke-{i} ({x}={v}) harus lebih kecil dari n={n}. Pilih p dan q lebih besar.")
-    return {"ascii_codes":codes,"digit_string":digits,"raw_blocks":raw,"display_blocks":[x.zfill(block_size) for x in raw],"values":values,"lengths":[len(x) for x in raw]}
+    """Encode each character as a fixed-width 3-digit Unicode code point.
 
-def decimal_blocks_to_text(values, lengths):
-    raw=[str(v).zfill(l) for v,l in zip(values,lengths)]
-    digits="".join(raw)
-    if len(digits)%2: raise ValueError("Jumlah digit hasil dekripsi tidak genap.")
-    codes=[digits[i:i+2] for i in range(0,len(digits),2)]
-    if any(not 32<=int(x)<=99 for x in codes): raise ValueError("Kode ASCII hasil dekripsi di luar 32-99.")
-    return "".join(chr(int(x)) for x in codes),raw,codes
+    Examples: H -> 072, h -> 104, i -> 105. The resulting decimal
+    stream is split into 3-digit RSA plaintext blocks.
+    """
+    if not text:
+        raise ValueError("Pesan tidak boleh kosong.")
+
+    unsupported = [(char, ord(char)) for char in text if ord(char) > 999]
+    if unsupported:
+        shown = ", ".join(f"{char!r}={code}" for char, code in unsupported[:4])
+        raise ValueError(
+            "Metode 3 digit hanya menerima karakter dengan kode 000-999. "
+            f"Karakter tidak valid: {shown}"
+        )
+
+    codes = [f"{ord(char):03d}" for char in text]
+    digit_string = "".join(codes)
+    raw_blocks = [
+        digit_string[index:index + block_size]
+        for index in range(0, len(digit_string), block_size)
+    ]
+    values = [int(block) for block in raw_blocks]
+
+    invalid = [
+        (index + 1, block, value)
+        for index, (block, value) in enumerate(zip(raw_blocks, values))
+        if value >= n
+    ]
+    if invalid:
+        index, block, value = invalid[0]
+        raise ValueError(
+            f"Blok ke-{index} ({block} = {value}) harus lebih kecil dari n = {n}. "
+            "Pilih p dan q yang menghasilkan n lebih besar."
+        )
+
+    return {
+        "ascii_codes": codes,
+        "digit_string": digit_string,
+        "raw_blocks": raw_blocks,
+        "display_blocks": raw_blocks,
+        "values": values,
+        "lengths": [3] * len(raw_blocks),
+        "block_size": block_size,
+    }
+
+
+def decimal_blocks_to_text(values, lengths=None):
+    """Decode fixed-width 3-digit code points back into text."""
+    blocks = [f"{int(value):03d}" for value in values]
+    codes = [int(block) for block in blocks]
+    if any(code < 0 or code > 999 for code in codes):
+        raise ValueError("Kode hasil dekripsi berada di luar rentang 000-999.")
+    return "".join(chr(code) for code in codes), blocks, blocks
 
 def encrypt_blocks(blocks,e,n):
     if any(v<0 or v>=n for v in blocks): raise ValueError("Setiap blok harus memenuhi 0 <= blok < n.")
