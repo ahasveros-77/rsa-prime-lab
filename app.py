@@ -30,20 +30,58 @@ for key,value in {
 def cipher_chars(values):
     return "".join(chr(v) if 0 <= v <= 0x10FFFF and not 0xD800 <= v <= 0xDFFF else "�" for v in values)
 
+
+def nearest_primes(value, minimum=2, maximum=10000, exclude=None):
+    lower=value-1
+    while lower>=minimum and (not is_prime(lower) or lower==exclude):
+        lower-=1
+    upper=value+1
+    while upper<=maximum and (not is_prime(upper) or upper==exclude):
+        upper+=1
+    return (lower if lower>=minimum else None, upper if upper<=maximum else None)
+
+
+def set_prime(field, value):
+    st.session_state[field]=value
+    st.session_state.rsa_key=None
+    st.session_state.cipher=[]
+    st.session_state.plain=""
+
 st.markdown('<div class="header"><h1>Enkripsi RSA</h1><p>Enkripsi dan dekripsi pesan dengan pasangan kunci RSA.</p></div>',unsafe_allow_html=True)
 
 st.markdown('<div class="section"><div class="section-title"><div class="step">1</div><h2>Kunci RSA</h2></div>',unsafe_allow_html=True)
 p_col,q_col=st.columns(2)
-with p_col: p=st.number_input("Bilangan prima p",min_value=2,max_value=10000,step=1,value=None,placeholder="2-10.000")
-with q_col: q=st.number_input("Bilangan prima q",min_value=2,max_value=10000,step=1,value=None,placeholder="2-10.000")
-st.caption("Rentang input: 2-10.000. Contoh prima:")
-st.markdown('<div class="hint"><span>11</span><span>47</span><span>71</span><span>101</span><span>251</span><span>499</span><span>997</span><span>1.009</span><span>2.003</span><span>5.003</span><span>7.001</span><span>9.973</span></div>',unsafe_allow_html=True)
+with p_col:
+    p=st.number_input("Bilangan prima p",min_value=2,max_value=10000,step=1,value=None,placeholder="2-10.000",key="p_input")
+    p_ok=p is not None and is_prime(int(p))
+    if p is not None and not p_ok:
+        lower,upper=nearest_primes(int(p),exclude=int(st.session_state.q_input) if st.session_state.get("q_input") else None)
+        st.error(f"{int(p)} bukan bilangan prima.")
+        b1,b2=st.columns(2)
+        if lower is not None: b1.button(f"Gunakan {lower}",key="p_lower",use_container_width=True,on_click=set_prime,args=("p_input",lower))
+        if upper is not None: b2.button(f"Gunakan {upper}",key="p_upper",use_container_width=True,on_click=set_prime,args=("p_input",upper))
+    elif p_ok:
+        st.success(f"{int(p)} adalah bilangan prima.")
+with q_col:
+    q=st.number_input("Bilangan prima q",min_value=2,max_value=10000,step=1,value=None,placeholder="2-10.000",key="q_input")
+    q_ok=q is not None and is_prime(int(q))
+    if q is not None and not q_ok:
+        lower,upper=nearest_primes(int(q),exclude=int(p) if p is not None else None)
+        st.error(f"{int(q)} bukan bilangan prima.")
+        b1,b2=st.columns(2)
+        if lower is not None: b1.button(f"Gunakan {lower}",key="q_lower",use_container_width=True,on_click=set_prime,args=("q_input",lower))
+        if upper is not None: b2.button(f"Gunakan {upper}",key="q_upper",use_container_width=True,on_click=set_prime,args=("q_input",upper))
+    elif q_ok:
+        st.success(f"{int(q)} adalah bilangan prima.")
 
-p_ok=p is not None and is_prime(int(p)); q_ok=q is not None and is_prime(int(q))
-if p is not None and not p_ok: st.error(f"p = {int(p)} bukan bilangan prima. Pilih salah satu contoh di bawah input.")
-if q is not None and not q_ok: st.error(f"q = {int(q)} bukan bilangan prima. Pilih salah satu contoh di bawah input.")
+st.caption("Masukkan angka 2-10.000. Jika bukan prima, pilih rekomendasi terdekat.")
 valid_primes=p_ok and q_ok and int(p)!=int(q)
-if p_ok and q_ok and int(p)==int(q): st.error("p dan q harus berbeda.")
+if p_ok and q_ok and int(p)==int(q):
+    st.error("p dan q harus berbeda.")
+    lower,upper=nearest_primes(int(q),exclude=int(p))
+    c1,c2=st.columns(2)
+    if lower is not None: c1.button(f"Ganti q ke {lower}",key="q_same_lower",use_container_width=True,on_click=set_prime,args=("q_input",lower))
+    if upper is not None: c2.button(f"Ganti q ke {upper}",key="q_same_upper",use_container_width=True,on_click=set_prime,args=("q_input",upper))
 
 if valid_primes:
     p_i,q_i=int(p),int(q); phi=(p_i-1)*(q_i-1)
