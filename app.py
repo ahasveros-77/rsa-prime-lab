@@ -23,7 +23,7 @@ st.markdown("""
 [data-testid="stHeader"]{background:transparent}.block-container{max-width:820px;padding:1.8rem 1rem 4rem}
 h1,h2{color:var(--ink)!important;letter-spacing:-.045em}h1{font-size:clamp(2.8rem,8vw,5rem)!important;line-height:.92!important;margin:0!important;font-weight:950!important}h2{font-size:1.25rem!important;margin:0!important}p,.stCaption{color:var(--muted)}
 .mast{border:3px solid var(--ink);background:var(--white);box-shadow:9px 9px 0 var(--ink);padding:1.4rem;margin-bottom:1.65rem;position:relative}.mast:after{content:'RSA';position:absolute;right:18px;top:14px;background:var(--pink);border:2px solid var(--ink);padding:.3rem .55rem;font-size:.72rem;font-weight:950;transform:rotate(2deg)}.mast p{margin:.75rem 0 0;max-width:520px}
-.card{border:3px solid var(--ink);background:var(--white);box-shadow:var(--shadow);padding:1.15rem;margin:1.25rem 0}.card-head{display:flex;align-items:center;gap:.7rem;border-bottom:2px solid var(--ink);padding-bottom:.8rem;margin-bottom:1rem}.step{width:31px;height:31px;display:grid;place-items:center;background:var(--acid);border:2px solid var(--ink);font-weight:950}.prime-preview{border:2px solid var(--ink);background:#fff9c9;padding:.65rem .75rem;margin-top:.45rem;font-size:.82rem}.prime-preview.ok{background:#dcfce7}.prime-preview.bad{background:#ffe2e2}.prime-preview b{color:var(--ink)}.chips{display:flex;gap:.38rem;flex-wrap:wrap;margin-top:.45rem}.chip{border:2px solid var(--ink);background:var(--white);padding:.22rem .48rem;font-size:.78rem;font-weight:850;box-shadow:2px 2px 0 var(--ink)}
+.card{border:3px solid var(--ink);background:var(--white);box-shadow:var(--shadow);padding:1.15rem;margin:1.25rem 0}.card-head{display:flex;align-items:center;gap:.7rem;border-bottom:2px solid var(--ink);padding-bottom:.8rem;margin-bottom:1rem}.step{width:31px;height:31px;display:grid;place-items:center;background:var(--acid);border:2px solid var(--ink);font-weight:950}.prime-preview{border:2px solid var(--ink);background:#fff9c9;padding:.65rem .75rem;margin-top:.45rem;font-size:.82rem}.prime-preview.ok{background:#dcfce7}.prime-preview.bad{background:#ffe2e2}.prime-preview b{color:var(--ink)}.chips{display:flex;gap:.38rem;flex-wrap:wrap;margin-top:.45rem}.chip{border:2px solid var(--ink);background:var(--white);padding:.22rem .48rem;font-size:.78rem;font-weight:850;box-shadow:2px 2px 0 var(--ink)}.prime-help{font-size:.75rem;color:var(--muted);margin:.35rem 0}
 .keys{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-top:1rem}.key{border:2px solid var(--ink);padding:.85rem}.key.public{background:var(--blue)}.key.private{background:var(--pink)}.key small{font-weight:900;text-transform:uppercase}.key strong{display:block;font-size:1.15rem;margin-top:.2rem;overflow-wrap:anywhere}.capacity{border:2px solid var(--ink);padding:.7rem;margin-top:.8rem;background:var(--acid);font-weight:800}.output{border:2px solid var(--ink);background:#f9f9f9;padding:.8rem;font-family:ui-monospace,monospace;overflow-wrap:anywhere}.result{background:var(--acid);font-family:inherit;font-weight:850}
 .stButton>button,.stDownloadButton>button{border:3px solid var(--ink)!important;border-radius:0!important;background:var(--acid)!important;color:var(--ink)!important;font-weight:900!important;min-height:2.8rem;box-shadow:4px 4px 0 var(--ink)!important}.stButton>button:hover,.stDownloadButton>button:hover{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink)!important}.stNumberInput input,.stTextArea textarea,.stSelectbox>div>div{border:3px solid var(--ink)!important;border-radius:0!important;background:#fff!important}.stAlert{border:3px solid var(--ink);border-radius:0}.stExpander{border:2px solid var(--ink)!important;border-radius:0!important;background:#fff}.footer{font-size:.75rem;color:var(--muted);margin-top:1.5rem;text-align:center}@media(max-width:600px){.keys{grid-template-columns:1fr}.mast{box-shadow:6px 6px 0 var(--ink)}.mast:after{display:none}}
 </style>
@@ -41,19 +41,27 @@ def nearest_primes(value, minimum=2, maximum=10000, exclude=None):
     return (lower if lower>=minimum else None, upper if upper<=maximum else None)
 
 
-def prime_preview(label, value, exclude=None):
+def apply_prime(source_key, target_key):
+    selected=st.session_state.get(source_key)
+    if selected not in (None, "Pilih rekomendasi"):
+        st.session_state[target_key]=int(selected)
+        st.session_state.rsa_key=None
+        st.session_state.cipher=[]
+        st.session_state.plain=""
+
+
+def prime_status(label, value, exclude=None):
     if value is None:
-        st.markdown(f'<div class="prime-preview"><b>{label}</b> · Ketik angka 2-10.000. Prima terdekat akan muncul di sini.</div>',unsafe_allow_html=True)
-        return False
+        st.markdown(f'<div class="prime-preview"><b>{label}</b> · Masukkan angka 2-10.000.</div>',unsafe_allow_html=True)
+        return False, []
     value=int(value)
     if is_prime(value) and value!=exclude:
         st.markdown(f'<div class="prime-preview ok"><b>{value}</b> adalah bilangan prima ✓</div>',unsafe_allow_html=True)
-        return True
+        return True, []
     lower,upper=nearest_primes(value,exclude=exclude)
-    chips="".join(f'<span class="chip">{item:,}</span>'.replace(",",".") for item in (lower,upper) if item is not None)
     reason="sama dengan nilai lainnya" if value==exclude else "bukan bilangan prima"
-    st.markdown(f'<div class="prime-preview bad"><b>{value}</b> {reason}.<div class="chips">Prima terdekat: {chips}</div></div>',unsafe_allow_html=True)
-    return False
+    st.markdown(f'<div class="prime-preview bad"><b>{value}</b> {reason}.</div>',unsafe_allow_html=True)
+    return False, [item for item in (lower,upper) if item is not None]
 
 
 def cipher_chars(values):
@@ -65,16 +73,21 @@ st.markdown('<div class="card"><div class="card-head"><div class="step">1</div><
 p_col,q_col=st.columns(2,gap="medium")
 with p_col:
     p=st.number_input("Bilangan prima p",min_value=2,max_value=10000,step=1,value=None,placeholder="2-10.000",key="p_value")
-    p_ok=prime_preview("p",p,exclude=int(st.session_state.q_value) if st.session_state.get("q_value") else None)
+    p_ok,p_suggestions=prime_status("p",p,exclude=int(st.session_state.q_value) if st.session_state.get("q_value") else None)
+    if p_suggestions:
+        st.selectbox("Prima terdekat untuk p",["Pilih rekomendasi"]+p_suggestions,key="p_suggestion",on_change=apply_prime,args=("p_suggestion","p_value"))
 with q_col:
     q=st.number_input("Bilangan prima q",min_value=2,max_value=10000,step=1,value=None,placeholder="2-10.000",key="q_value")
-    q_ok=prime_preview("q",q,exclude=int(p) if p is not None else None)
+    q_ok,q_suggestions=prime_status("q",q,exclude=int(p) if p is not None else None)
+    if q_suggestions:
+        st.selectbox("Prima terdekat untuk q",["Pilih rekomendasi"]+q_suggestions,key="q_suggestion",on_change=apply_prime,args=("q_suggestion","q_value"))
 
 valid=p_ok and q_ok and int(p)!=int(q)
 if valid:
     p_i,q_i=int(p),int(q); n=p_i*q_i; phi=(p_i-1)*(q_i-1)
-    options=valid_e_values(phi)
-    e=st.selectbox("Eksponen publik e",options)
+    options=valid_e_values(phi,limit=min(80,max(1,phi-2)))
+    e=st.selectbox("Eksponen publik e",options,help="Daftar hanya memuat e dengan 1 < e < φ(n) dan PBB(e, φ(n)) = 1.")
+    st.caption(f"{len(options)} opsi e valid tersedia untuk φ(n) = {phi}.")
     grade="Mendukung seluruh kode karakter 000-999" if n>999 else f"Hanya mendukung kode karakter di bawah {n}"
     st.markdown(f'<div class="capacity">n = {n:,} · φ(n) = {phi:,} · {grade}</div>'.replace(",","."),unsafe_allow_html=True)
     if st.button("Buat kunci",use_container_width=True):
